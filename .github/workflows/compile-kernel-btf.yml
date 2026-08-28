@@ -1,0 +1,35 @@
+name: Compile Kernel with BTF
+
+on:
+  workflow_dispatch:
+    inputs:
+      kernel_version:
+        description: "Kernel version"
+        required: true
+        default: "6.6.y"
+        type: choice
+        options:
+          - 6.6.y
+          - 6.1.y
+          - 6.12.y
+      kernel_sign:
+        description: "Kernel signature"
+        required: false
+        default: "-btf"
+        type: string
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Compile the kernel
+        uses: ophub/amlogic-s9xxx-armbian@main
+        with:
+          build_target: kernel
+          kernel_version: ${{ inputs.kernel_version }}
+          kernel_auto: true
+          kernel_sign: ${{ inputs.kernel_sign }}
+          # 这里指向你存放修改后配置的目录
+          kernel_config: kernel-config/btf          # 如果用推荐做法
+          # 或者写成下面这样（如果直接改了 stable）：
+          # kernel_config: kernel-config/release/stable
