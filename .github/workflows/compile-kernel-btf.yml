@@ -20,7 +20,7 @@ on:
 
 jobs:
   compile:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm                    # 使用 ARM runner，避免架构问题
     steps:
       - name: Compile the kernel
         uses: uni-earth/amlogic-s9xxx-armbian@main
@@ -29,7 +29,5 @@ jobs:
           kernel_version: ${{ inputs.kernel_version }}
           kernel_auto: true
           kernel_sign: ${{ inputs.kernel_sign }}
-          # 这里指向你存放修改后配置的目录
-          kernel_config: kernel-config/btf          # 如果用推荐做法
-          # 或者写成下面这样（如果直接改了 stable）：
-          # kernel_config: kernel-config/release/stable
+          docker_image: ophub/armbian-trixie:arm64
+          kernel_config: kernel-config/btf         # ← 指向你放 config-6.6 的目录
