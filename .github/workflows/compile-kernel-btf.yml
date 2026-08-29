@@ -20,14 +20,28 @@ on:
 
 jobs:
   compile:
-    runs-on: ubuntu-24.04-arm                    # 使用 ARM runner，避免架构问题
+    runs-on: ubuntu-24.04-arm
     steps:
       - name: Compile the kernel
-        uses: uni-earth/amlogic-s9xxx-armbian@main
+        uses: ophub/amlogic-s9xxx-armbian@main
         with:
           build_target: kernel
           kernel_version: ${{ inputs.kernel_version }}
           kernel_auto: true
           kernel_sign: ${{ inputs.kernel_sign }}
           docker_image: ophub/armbian-trixie:arm64
-          kernel_config: kernel-config/btf         # ← 指向你放 config-6.6 的目录
+          kernel_config: kernel-config/btf
+
+      - name: Upload Kernel to Release
+        if: ${{ env.PACKAGED_STATUS == 'success' }}
+        uses: ncipollo/release-action@v1
+        with:
+          tag: kernel-btf
+          name: Kernel with BTF ${{ inputs.kernel_version }}
+          artifacts: ${{ env.PACKAGED_OUTPUTPATH }}/*
+          allowUpdates: true
+          replacesArtifacts: true
+          token: ${{ secrets.GITHUB_TOKEN }}
+          body: |
+            带 BTF 支持的 6.6 内核，用于 daed。
+            签名：${{ inputs.kernel_sign }}
