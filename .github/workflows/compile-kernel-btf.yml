@@ -49,16 +49,32 @@ jobs:
           docker_image: ophub/armbian-trixie:arm64
           kernel_config: compile-kernel/btf
 
-      # 产物校验：打包出来的内核配置必须带 BTF，否则终止（不生成无 BTF 的 release）。
-      - name: Verify BTF in packaged kernel
+      # 产物校验（已逐行核实编译脚本）：编译用的 .config 由 compile_env 从
+      # tools/config 拷入内核源码目录 linux-<x.y>.y/.config，且 delete_source 默认
+      # false（源码保留）→ 该文件编译后必在；boot-*.tar.gz 内也含 config-* 作兜底。
+      - name: Verify BTF in built kernel
         run: |
-          cfg="$(find "${{ env.PACKAGED_OUTPUTPATH }}" -name 'config-*' 2>/dev/null | head -n1)"
-          test -n "${cfg}" || { echo "::error::产物中找不到 config 文件"; exit 1; }
-          grep -q "^CONFIG_DEBUG_INFO_BTF=y" "${cfg}" || { echo "::error::产物内核无 BTF: ${cfg}"; exit 1; }
-          echo "BTF OK: ${cfg}"
+          cfg="$(find "${{ env.PACKAGED_OUTPUTPATH }}/../kernel" -maxdepth 2 -type f -name '.config' 2>/dev/null | head -n1)"
+          if [[ -n "${cfg}" ]] && grep -q "^CONFIG_DEBUG_INFO_BTF=y" "${cfg}"; then
+            echo "BTF OK: ${cfg}"
+            exit 0
+          fi
+          boot_pkg="$(find "${{ env.PACKAGED_OUTPUTPATH }}" -name 'boot-*.tar.gz' 2>/dev/null | head -n1)"
+          if [[ -n "${boot_pkg}" ]]; then
+            tmpd="$(mktemp -d)"
+            tar -xzf "${boot_pkg}" -C "${tmpd}" 2>/dev/null
+            cfg2="$(find "${tmpd}" -type f -name 'config-*' | head -n1)"
+            rm -rf "${tmpd}"
+            if [[ -n "${cfg2}" ]] && grep -q "^CONFIG_DEBUG_INFO_BTF=y" "${cfg2}"; then
+              echo "BTF OK (boot package): ${boot_pkg}"
+              exit 0
+            fi
+          fi
+          echo "::error::内核配置无 BTF（源码 .config 与 boot 包均未检出 CONFIG_DEBUG_INFO_BTF=y）"
+          exit 1
 
       - name: Upload Kernel to Release
-        if: ${{ env.PACKAGED_STATUS == 'success' }}
+        if: ${{ success() && env.PACKAGED_STATUS == 'success' }}
         uses: ncipollo/release-action@v1
         with:
           tag: kernel-btf
