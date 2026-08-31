@@ -22,6 +22,23 @@ jobs:
   compile:
     runs-on: ubuntu-24.04-arm
     steps:
+      # 关键修复：action 的 kernel_config 是从本仓库工作区读文件的。
+      # 没有 checkout 时 ${{ github.workspace }} 是空目录，kernel-config/btf/config-*
+      # 永远找不到，action 打印一行提示后静默回退官方精简配置（无 DEBUG_INFO_BTF）。
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # 前置校验：配置缺失或未开 BTF 时直接失败，避免再次"编译成功但没 BTF"。
+      - name: Sanity check BTF config
+        env:
+          KERNEL_VERSION: ${{ inputs.kernel_version }}
+        run: |
+          series="${KERNEL_VERSION%.y}"
+          cfg="compile-kernel/btf/config-${series}"
+          test -s "${cfg}" || { echo "::error::${cfg} 不存在，请确认 fork 中已创建该文件"; exit 1; }
+          grep -q "^CONFIG_DEBUG_INFO_BTF=y" "${cfg}" || { echo "::error::${cfg} 未启用 CONFIG_DEBUG_INFO_BTF"; exit 1; }
+          echo "config OK: ${cfg}"
+
       - name: Compile the kernel
         uses: ophub/amlogic-s9xxx-armbian@main
         with:
@@ -30,7 +47,15 @@ jobs:
           kernel_auto: true
           kernel_sign: ${{ inputs.kernel_sign }}
           docker_image: ophub/armbian-trixie:arm64
-          kernel_config: kernel-config/btf
+          kernel_config: compile-kernel/btf
+
+      # 产物校验：打包出来的内核配置必须带 BTF，否则终止（不生成无 BTF 的 release）。
+      - name: Verify BTF in packaged kernel
+        run: |
+          cfg="$(find "${{ env.PACKAGED_OUTPUTPATH }}" -name 'config-*' 2>/dev/null | head -n1)"
+          test -n "${cfg}" || { echo "::error::产物中找不到 config 文件"; exit 1; }
+          grep -q "^CONFIG_DEBUG_INFO_BTF=y" "${cfg}" || { echo "::error::产物内核无 BTF: ${cfg}"; exit 1; }
+          echo "BTF OK: ${cfg}"
 
       - name: Upload Kernel to Release
         if: ${{ env.PACKAGED_STATUS == 'success' }}
